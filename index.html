@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>24点竞赛选拔</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 0;
+            padding: 10px;
+            background: #f0f2f5;
+        }
+        .screen {
+            display: none;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        .active { display: block; }
+        .number-btn, .operator-btn {
+            width: 22%;
+            height: 50px;
+            margin: 1%;
+            font-size: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: white;
+        }
+        #expression {
+            font-size: 28px;
+            margin: 20px 0;
+            min-height: 60px;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .timer {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: #333;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
+        .question-nav {
+            display: flex;
+            justify-content: space-between;
+            margin: 20px 0;
+        }
+        button { touch-action: manipulation; }
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            font-size: 16px;
+        }
+        #start-screen button {
+            width: 100%;
+            padding: 15px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+        }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <!-- 开始界面 -->
+    <div id="start-screen" class="screen active">
+        <h2>24点竞赛选拔</h2>
+        <input type="text" id="username" placeholder="请输入姓名" required>
+        <button onclick="startTest()">开始测试</button>
+    </div>
+
+    <!-- 测试界面 -->
+    <div id="test-screen" class="screen">
+        <div class="timer">剩余时间：<span id="time">10:00</span></div>
+        <div id="current-question" style="font-size:24px; margin:15px 0;"></div>
+        <div id="expression"></div>
+        <div id="number-buttons"></div>
+        <div>
+            <button class="operator-btn" onclick="addOperator('+')">+</button>
+            <button class="operator-btn" onclick="addOperator('-')">-</button>
+            <button class="operator-btn" onclick="addOperator('×')">×</button>
+            <button class="operator-btn" onclick="addOperator('÷')">÷</button>
+            <button class="operator-btn" onclick="addOperator('(')">(</button>
+            <button class="operator-btn" onclick="addOperator(')')">)</button>
+            <button class="operator-btn" onclick="deleteChar()" style="background:#ff4444;color:white;">⌫</button>
+        </div>
+        <div class="question-nav">
+            <button onclick="prevQuestion()" style="width:45%">上一题</button>
+            <span id="current-index" style="width:10%; text-align:center">1/50</span>
+            <button onclick="nextQuestion()" style="width:45%">下一题</button>
+        </div>
+    </div>
+
+    <!-- 结果界面 -->
+    <div id="result-screen" class="screen">
+        <h2>测试结果</h2>
+        <p>姓名：<span id="result-name"></span></p>
+        <p>用时：<span id="result-time"></span></p>
+        <p>正确题数：<span id="correct-count"></span></p>
+        <h3>错题记录：</h3>
+        <div id="wrong-answers"></div>
+    </div>
+
+<script>
+const questions = [
+    [1,2,3,4],[2,3,4,5],[3,4,5,6],[1,1,4,6],[1,2,5,8],
+    [2,3,5,7],[2,4,6,8],[3,4,6,8],[1,3,5,7],[1,3,6,8],
+    [1,4,8,9],[2,3,8,9],[2,4,8,9],[3,4,5,7],[3,6,7,8],
+    [4,6,7,8],[1,7,8,12],[1,3,7,8],[1,5,6,8],[2,5,6,8],
+    [3,7,8,8],[2,4,6,9],[1,4,6,7],[1,3,5,9],[2,3,5,9],
+    [2,4,5,9],[3,4,5,9],[4,5,7,9],[5,6,7,8],[1,2,3,8],
+    [1,2,4,9],[1,3,4,9],[1,4,7,8],[3,4,7,9],[2,7,8,8],
+    [3,5,6,8],[3,5,8,9],[4,5,8,9],[1,2,4,7],[3,4,6,9],
+    [1,4,6,8],[2,3,4,9],[2,4,6,9],[2,5,7,10],[4,6,8,9],
+    [1,2,6,8],[3,6,8,9],[1,5,7,8],[4,5,7,13],[2,5,7,8]
+];
+
+let state = {
+    username: '',
+    answers: Array(50).fill({status: 'unanswered', expression: ''}),
+    currentIndex: 0,
+    timeLeft: 600,
+    timerId: null,
+    usedNumbers: []
+};
+
+function startTest() {
+    const username = document.getElementById('username').value.trim();
+    if (!username) return alert('请输入姓名');
+    state.username = username;
+
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById('test-screen').classList.add('active');
+
+    state.timerId = setInterval(() => {
+        state.timeLeft--;
+        document.getElementById('time').textContent = 
+            `${Math.floor(state.timeLeft/60)}:${(state.timeLeft%60).toString().padStart(2,'0')}`;
+        if (state.timeLeft <= 0) submitTest();
+    }, 1000);
+
+    loadQuestion(state.currentIndex);
+}
+
+function loadQuestion(index) {
+    state.currentIndex = index;
+    const question = questions[index];
+    state.usedNumbers = [];
+    
+    document.getElementById('current-question').textContent = question.join(' ');
+    document.getElementById('current-index').textContent = `${index+1}/50`;
+    document.getElementById('expression').textContent = state.answers[index].expression;
+    
+    const container = document.getElementById('number-buttons');
+    container.innerHTML = question.map((n, i) => `
+        <button class="number-btn" 
+                onclick="useNumber(${i})" 
+                ${isNumberUsed(i) ? 'disabled style="opacity:0.5"' : ''}>
+            ${n}
+        </button>
+    `).join('');
+}
+
+function useNumber(index) {
+    const number = questions[state.currentIndex][index];
+    state.usedNumbers.push({index, number});
+    document.querySelectorAll('#number-buttons button')[index].disabled = true;
+    document.querySelectorAll('#number-buttons button')[index].style.opacity = 0.5;
+    document.getElementById('expression').textContent += number;
+}
+
+function addOperator(op) {
+    document.getElementById('expression').textContent += op;
+}
+
+function deleteChar() {
+    const expr = document.getElementById('expression').textContent;
+    const lastChar = expr.slice(-1);
+    
+    if (!isNaN(lastChar)) {
+        const lastUsed = state.usedNumbers.pop();
+        if (lastUsed) {
+            const btn = document.querySelectorAll('#number-buttons button')[lastUsed.index];
+            btn.disabled = false;
+            btn.style.opacity = 1;
+        }
+    }
+    
+    document.getElementById('expression').textContent = expr.slice(0, -1);
+}
+
+function checkAnswer() {
+    const expr = document.getElementById('expression').textContent;
+    const question = questions[state.currentIndex];
+    
+    const usedNumbers = expr.match(/\d+/g) || [];
+    const valid = [...question].sort().join('') === usedNumbers.map(Number).sort().join('');
+    
+    let correct = false;
+    try {
+        const result = eval(expr.replace(/×/g, '*').replace(/÷/g, '/'));
+        correct = valid && Math.abs(result - 24) < 1e-6;
+    } catch(e) {}
+    
+    state.answers[state.currentIndex] = {
+        status: correct ? 'correct' : 'wrong',
+        expression: expr
+    };
+}
+
+function prevQuestion() {
+    checkAnswer();
+    if (state.currentIndex > 0) loadQuestion(state.currentIndex - 1);
+}
+
+function nextQuestion() {
+    checkAnswer();
+    if (state.currentIndex < 49) {
+        loadQuestion(state.currentIndex + 1);
+    } else {
+        submitTest();
+    }
+}
+
+function submitTest() {
+    clearInterval(state.timerId);
+    
+    const correctCount = state.answers.filter(a => a.status === 'correct').length;
+    const wrongAnswers = state.answers
+        .map((a, i) => ({...a, question: questions[i]}))
+        .filter(a => a.status === 'wrong');
+    
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById('result-screen').classList.add('active');
+    
+    document.getElementById('result-name').textContent = state.username;
+    document.getElementById('result-time').textContent = 
+        `${Math.floor((600 - state.timeLeft)/60)}分${(600 - state.timeLeft)%60}秒`;
+    document.getElementById('correct-count').textContent = correctCount;
+    
+    const wrongContainer = document.getElementById('wrong-answers');
+    wrongContainer.innerHTML = wrongAnswers.map(a => `
+        <div class="error">
+            <p>题目：${a.question.join(' ')}</p>
+            <p>你的答案：${a.expression || '未作答'}</p>
+        </div>
+    `).join('');
+}
+
+function isNumberUsed(index) {
+    return state.usedNumbers.some(n => n.index === index);
+}
+</script>
+</body>
+</html><!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>24点竞赛选拔</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 0;
+            padding: 10px;
+            background: linear-gradient(135deg, #f0f5ff 0%, #f8f0ff 100%);
+            min-height: 100vh;
+        }
+        .screen {
+            display: none;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        .active { display: block; }
+        
+        /* 数字按钮样式 */
+        .number-btn {
+            width: 22%;
+            height: 50px;
+            margin: 1%;
+            font-size: 20px;
+            border: none;
+            border-radius: 12px;
+            background: #ffffff;
+            color: #2c3e50;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+            transition: all 0.2s;
+        }
+        .number-btn:active {
+            transform: scale(0.95);
+        }
+        .number-btn[disabled] {
+            background: #ecf0f1;
+            color: #bdc3c7;
+            box-shadow: none;
+        }
+
+        /* 操作符按钮 */
+        .operator-btn {
+            width: 22%;
+            height: 50px;
+            margin: 1%;
+            font-size: 20px;
+            border: none;
+            border-radius: 12px;
+            background: #3498db;
+            color: white;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+            transition: all 0.2s;
+        }
+        .operator-btn:nth-child(4n+1) { background: #e67e22; } /* 橙色 */
+        .operator-btn:nth-child(4n+2) { background: #2ecc71; } /* 绿色 */
+        .operator-btn:nth-child(4n+3) { background: #9b59b6; } /* 紫色 */
+
+        /* 删除按钮特别样式 */
+        .operator-btn[onclick="deleteChar()"] {
+            background: #e74c3c;
+            font-size: 24px;
+        }
+
+        /* 表达式显示区域 */
+        #expression {
+            font-size: 28px;
+            margin: 20px 0;
+            min-height: 60px;
+            padding: 15px;
+            background: rgba(255,255,255,0.9);
+            border-radius: 15px;
+            text-align: center;
+            color: #2c3e50;
+            border: 2px solid #3498db;
+        }
+
+        /* 计时器 */
+        .timer {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            background: rgba(52, 152, 219, 0.9);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 25px;
+            font-weight: bold;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+        }
+
+        /* 题目导航 */
+        .question-nav button {
+            width: 45%;
+            padding: 12px;
+            border: none;
+            border-radius: 25px;
+            background: #3498db;
+            color: white;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+        .question-nav button:active {
+            transform: scale(0.95);
+        }
+
+        /* 开始界面 */
+        #start-screen {
+            text-align: center;
+            padding: 30px 20px;
+        }
+        #start-screen h2 {
+            color: #2c3e50;
+            font-size: 2.5em;
+            margin-bottom: 30px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+        }
+        #start-screen input {
+            border: 2px solid #3498db;
+            border-radius: 25px;
+            margin: 20px 0;
+            transition: all 0.3s;
+        }
+        #start-screen input:focus {
+            box-shadow: 0 0 8px rgba(52, 152, 219, 0.5);
+        }
+        #start-screen button {
+            background: linear-gradient(45deg, #3498db, #2980b9);
+            border-radius: 25px;
+            font-size: 1.2em;
+        }
+
+        /* 结果界面 */
+        #result-screen {
+            padding: 20px;
+            background: rgba(255,255,255,0.9);
+            border-radius: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        #result-screen h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        .error {
+            background: #ffe6e6;
+            border-left: 4px solid #e74c3c;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<!-- 保持之前的HTML结构不变 --><style>
+/* 修改后的按钮样式 */
+.number-btn, .operator-btn {
+    width: 23%; /* 增加按钮宽度占比 */
+    height: 65px; /* 增加按钮高度 */
+    margin: 1%;
+    font-size: 24px; /* 增大字体 */
+    border: none;
+    border-radius: 15px; /* 更大的圆角 */
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    transition: all 0.2s;
+}
+
+/* 调整操作符按钮布局 */
+#test-screen > div:nth-of-type(4) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px; /* 使用gap统一控制间距 */
+}
+
+/* 增大导航按钮 */
+.question-nav button {
+    width: 48%;
+    height: 55px;
+    font-size: 20px;
+}
+
+/* 调整数字按钮区域 */
+#number-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    margin-bottom: 10px;
+}
+
+/* 增大表达式显示区域 */
+#expression {
+    font-size: 32px;
+    min-height: 80px;
+    padding: 20px;
+}
+
+/* 调整删除按钮特别样式 */
+.operator-btn[onclick="deleteChar()"] {
+    font-size: 28px;
+}
+
+/* 调整计时器大小 */
+.timer {
+    font-size: 18px;
+    padding: 10px 20px;
+}
+
+/* 适配更大按钮后的其他调整 */
+@media (max-width: 375px) { /* 针对小屏幕优化 */
+    .number-btn, .operator-btn {
+        width: 22%;
+        height: 60px;
+        font-size: 22px;
+    }
+}
+</style>
