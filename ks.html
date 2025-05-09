@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>口算竞赛选拔</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f0f2f5; }
+        .screen { display: none; position: relative; }
+        .active { display: block; }
+        .num-pad { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 20px 0; }
+        .btn { 
+            padding: 15px; 
+            font-size: 24px; 
+            border: 2px solid #ddd;
+            background: #fff;
+            border-radius: 8px;
+            touch-action: manipulation;
+        }
+        .question { 
+            font-size: 32px; 
+            margin: 30px 0;
+            text-align: center;
+            color: #1a73e8;
+        }
+        #timer {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            background: #ff4444;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        input {
+            width: 100%;
+            padding: 15px;
+            font-size: 24px;
+            border: 2px solid #1a73e8;
+            border-radius: 8px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        button { transition: all 0.2s; }
+        button:active { transform: scale(0.95); }
+        #start-screen {
+            text-align: center;
+            max-width: 500px;
+            margin: 50px auto;
+        }
+        #start-screen input {
+            display: block;
+            margin: 20px auto;
+            width: 80%;
+        }
+        #start-screen button {
+            background: #1a73e8;
+            color: white;
+            padding: 15px 40px;
+            border: none;
+            border-radius: 25px;
+            font-size: 20px;
+        }
+        .nav-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin: 20px 0;
+        }
+        .error-item {
+            padding: 10px;
+            margin: 5px 0;
+            background: #ffe6e6;
+            border-left: 4px solid #ff4444;
+        }
+        @media (max-width: 480px) {
+            .btn { padding: 12px; font-size: 20px; }
+            .question { font-size: 28px; }
+            #timer { font-size: 14px; padding: 8px 15px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- 开始界面 -->
+    <div id="start-screen" class="screen active">
+        <h1>口算竞赛选拔</h1>
+        <input type="text" id="username" placeholder="请输入姓名" required>
+        <button onclick="startTest()">开始测试</button>
+    </div>
+
+    <!-- 测试界面 -->
+    <div id="test-screen" class="screen">
+        <div id="timer">剩余时间：10:00</div>
+        <div class="question" id="question"></div>
+        <input type="text" id="answer" readonly>
+        <div class="num-pad">
+            <button class="btn" onclick="inputNum(7)">7</button>
+            <button class="btn" onclick="inputNum(8)">8</button>
+            <button class="btn" onclick="inputNum(9)">9</button>
+            <button class="btn" onclick="inputNum(4)">4</button>
+            <button class="btn" onclick="inputNum(5)">5</button>
+            <button class="btn" onclick="inputNum(6)">6</button>
+            <button class="btn" onclick="inputNum(1)">1</button>
+            <button class="btn" onclick="inputNum(2)">2</button>
+            <button class="btn" onclick="inputNum(3)">3</button>
+            <button class="btn" onclick="inputNum(0)">0</button>
+            <button class="btn" onclick="inputNum('.')">.</button>
+            <button class="btn" onclick="delNum()">⌫</button>
+        </div>
+        <div class="nav-buttons">
+            <button class="btn" onclick="prevQuestion()" style="width: 120px;">上一题</button>
+            <span id="current-page" style="font-size: 18px;">1/100</span>
+            <button class="btn" onclick="nextQuestion()" style="width: 120px;">下一题</button>
+        </div>
+    </div>
+
+    <!-- 结果界面 -->
+    <div id="result-screen" class="screen">
+        <h2>测试结果</h2>
+        <p>姓名：<span id="result-name"></span></p>
+        <p>用时：<span id="result-time"></span></p>
+        <p>正确题数：<span id="result-correct"></span></p>
+        <h3>错题记录：</h3>
+        <div id="error-list"></div>
+    </div>
+
+    <script>
+        const questions = [
+            { q: "23 + 32 =", a: "55" },
+            { q: "47 - 19 =", a: "28" },
+            { q: "5×9 =", a: "45" },
+            { q: "48÷6 =", a: "8" },
+            { q: "12×6 =", a: "72" },
+            { q: "11×9 =", a: "99" },
+            { q: "27 + 63 =", a: "90" },
+            { q: "53 - 27 =", a: "26" },
+            { q: "7×8 =", a: "56" },
+            { q: "72÷8 =", a: "9" },
+            { q: "15×6 =", a: "90" },
+            { q: "24×5 =", a: "120" },
+            { q: "38 + 42 =", a: "80" },
+            { q: "65 - 39 =", a: "26" },
+            { q: "9×7 =", a: "63" },
+            { q: "63÷7 =", a: "9" },
+            { q: "18×4 =", a: "72" },
+            { q: "13×7 =", a: "91" },
+            { q: "35 + 45 =", a: "80" },
+            { q: "71 - 46 =", a: "25" },
+            { q: "6×12 =", a: "72" },
+            { q: "88÷8 =", a: "11" },
+            { q: "22×5 =", a: "110" },
+            { q: "16 + 84 =", a: "100" },
+            { q: "83 - 37 =", a: "46" },
+            { q: "8×11 =", a: "88" },
+            { q: "56÷4 =", a: "14" },
+            { q: "17×4 =", a: "68" },
+            { q: "28 + 72 =", a: "100" },
+            { q: "92 - 57 =", a: "35" },
+            { q: "9×12 =", a: "108" },
+            { q: "78÷6 =", a: "13" },
+            { q: "14×7 =", a: "98" },
+            { q: "31 + 69 =", a: "100" },
+            { q: "74 - 36 =", a: "38" },
+            { q: "5×16 =", a: "80" },
+            { q: "96÷8 =", a: "12" },
+            { q: "21×5 =", a: "105" },
+            { q: "19 + 81 =", a: "100" },
+            { q: "86 - 49 =", a: "37" },
+            { q: "7×14 =", a: "98" },
+            { q: "84÷6 =", a: "14" },
+            { q: "16×7 =", a: "112" },
+            { q: "34 + 66 =", a: "100" },
+            { q: "77 - 48 =", a: "29" },
+            { q: "8×13 =", a: "104" },
+            { q: "91÷13 =", a: "7" },
+            { q: "15×8 =", a: "120" },
+            { q: "26 + 74 =", a: "100" },
+            { q: "94 - 59 =", a: "35" },
+            { q: "6×14 =", a: "84" },
+            { q: "88÷11 =", a: "8" },
+            { q: "23×4 =", a: "92" },
+            { q: "3.14 + 2.36 =", a: "5.5" },
+            { q: "6.85 - 3.2 =", a: "3.65" },
+            { q: "4.27 + 3.58 =", a: "7.85" },
+            { q: "9.36 - 4.15 =", a: "5.21" },
+            { q: "5.6 + 4.4 =", a: "10" },
+            { q: "8.72 - 5.3 =", a: "3.42" },
+            { q: "2.89 + 3.7 =", a: "6.59" },
+            { q: "7.63 - 4.58 =", a: "3.05" },
+            { q: "1.75 + 2.85 =", a: "4.6" },
+            { q: "6.32 - 2.7 =", a: "3.62" },
+            { q: "5.18 + 3.37 =", a: "8.55" },
+            { q: "8.4 - 3.65 =", a: "4.75" },
+            { q: "3.25 + 4.75 =", a: "8" },
+            { q: "9.1 - 5.4 =", a: "3.7" },
+            { q: "2.68 + 1.72 =", a: "4.4" },
+            { q: "7.25 - 4.3 =", a: "2.95" },
+            { q: "4.79 + 3.3 =", a: "8.09" },
+            { q: "6.45 - 2.8 =", a: "3.65" },
+            { q: "3.16 + 2.84 =", a: "6" },
+            { q: "5.2 - 3.65 =", a: "1.55" },
+            { q: "15×4 + 8 =", a: "68" },
+            { q: "32 - 5×6 =", a: "2" },
+            { q: "24÷4 + 9 =", a: "15" },
+            { q: "40 - 6×5 =", a: "10" },
+            { q: "18×3 - 12 =", a: "42" },
+            { q: "21 + 4×5 =", a: "41" },
+            { q: "54÷9 - 4 =", a: "2" },
+            { q: "14×4 - 15 =", a: "41" },
+            { q: "(16 + 20)÷4 =", a: "9" },
+            { q: "(32 - 20)×3 =", a: "36" },
+            { q: "(15 + 18)÷3 =", a: "11" },
+            { q: "(40 - 16)÷8 =", a: "3" },
+            { q: "125×4×2 =", a: "1000" },
+            { q: "25×16×5 =", a: "2000" },
+            { q: "24×25 =", a: "600" },
+            { q: "125×(8 - 2) =", a: "750" },
+            { q: "25×(30 + 4) =", a: "850" },
+            { q: "98×15 =", a: "1470" },
+            { q: "102×28 =", a: "2856" },
+            { q: "42×101 - 42 =", a: "4200" },
+            { q: "36×8 + 36×2 =", a: "360" },
+            { q: "75×14 + 25×14 =", a: "1400" },
+            { q: "65 + 28 + 35 =", a: "128" },
+            { q: "43 + 57 + 64 =", a: "164" },
+            { q: "156 - 37 - 63 =", a: "56" },
+            { q: "215 - 98 + 85 =", a: "202" },
+            { q: "360÷15 =", a: "24" },
+            { q: "800÷20÷4 =", a: "10" },
+            { q: "56×99 =", a: "5544" },
+            { q: "45×101 =", a: "4545" }
+        ];
+
+        let currentQuestion = 0;
+        let answers = Array(100).fill('');
+        let startTime;
+        let timer;
+
+        function startTest() {
+            const username = document.getElementById('username').value.trim();
+            if (!username) return alert('请输入姓名');
+            
+            // 随机选择题目
+            const shuffled = [...questions].sort(() => Math.random() - 0.5);
+            window.testQuestions = shuffled.slice(0, 100);
+            
+            document.getElementById('start-screen').classList.remove('active');
+            document.getElementById('test-screen').classList.add('active');
+            
+            startTime = Date.now();
+            startTimer();
+            showQuestion();
+            
+            // 禁用物理键盘输入
+            document.getElementById('answer').addEventListener('keydown', (e) => {
+                e.preventDefault();
+            });
+        }
+
+        function startTimer() {
+            let timeLeft = 600;
+            timer = setInterval(() => {
+                timeLeft--;
+                const minutes = Math.floor(timeLeft / 60);
+                const seconds = timeLeft % 60;
+                document.getElementById('timer').textContent = 
+                    `剩余时间：${minutes}:${seconds.toString().padStart(2, '0')}`;
+                
+                if (timeLeft <= 0) submitTest();
+            }, 1000);
+        }
+
+        function showQuestion() {
+            document.getElementById('question').textContent = 
+                window.testQuestions[currentQuestion].q;
+            document.getElementById('answer').value = answers[currentQuestion];
+            document.getElementById('current-page').textContent = 
+                `${currentQuestion + 1}/100`;
+        }
+
+        function inputNum(num) {
+            answers[currentQuestion] += num;
+            document.getElementById('answer').value = answers[currentQuestion];
+        }
+
+        function delNum() {
+            answers[currentQuestion] = answers[currentQuestion].slice(0, -1);
+            document.getElementById('answer').value = answers[currentQuestion];
+        }
+
+        function prevQuestion() {
+            if (currentQuestion > 0) {
+                currentQuestion--;
+                showQuestion();
+            }
+        }
+
+        function nextQuestion() {
+            if (currentQuestion < 99) {
+                currentQuestion++;
+                showQuestion();
+            }
+        }
+
+        function submitTest() {
+            clearInterval(timer);
+            
+            // 计算正确题数
+            const correct = window.testQuestions.reduce((count, q, i) => 
+                q.a === answers[i].trim() ? count + 1 : count, 0);
+            
+            // 显示结果
+            document.getElementById('test-screen').classList.remove('active');
+            document.getElementById('result-screen').classList.add('active');
+            
+            document.getElementById('result-name').textContent = 
+                document.getElementById('username').value;
+                
+            const totalSeconds = Math.floor((Date.now() - startTime)/1000);
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            document.getElementById('result-time').textContent = 
+                `${minutes}分${seconds.toString().padStart(2, '0')}秒`;
+                
+            document.getElementById('result-correct').textContent = correct;
+            
+            // 显示错题
+            const errorList = document.getElementById('error-list');
+            window.testQuestions.forEach((q, i) => {
+                if (q.a !== answers[i].trim()) {
+                    const errorItem = document.createElement('div');
+                    errorItem.className = 'error-item';
+                    errorItem.innerHTML = `
+                        <div>题目：${q.q}</div>
+                        <div>正确答案：${q.a}</div>
+                        <div>你的答案：${answers[i] || "未作答"}</div>
+                    `;
+                    errorList.appendChild(errorItem);
+                }
+            });
+        }
+    </script>
+</body>
+</html>
